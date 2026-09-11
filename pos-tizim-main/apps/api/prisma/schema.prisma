@@ -1,0 +1,852 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────
+//  TENANTS & PLANS (SaaS multi-tenant)
+// ─────────────────────────────────────────
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  phone     String?
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branches               Branch[]
+  users                  User[]
+  products               Product[]
+  sales                  Sale[]
+  cashSessions           CashSession[]
+  auditLogs              AuditLog[]
+  subscription           Subscription?
+  registers              Register[]
+  customers              Customer[]
+  receivables            Receivable[]
+  invoices               Invoice[]
+  usageMonthly           UsageMonthly[]
+  cashbackCards          CashbackCard[]
+  telegramSettings       TelegramTenantSettings?
+  telegramLinks          TelegramLink[]
+  telegramLinkTokens     TelegramLinkToken[]
+  telegramNotifPrefs     TelegramNotificationPreference[]
+  inventoryAlertRules    InventoryAlertRule[]
+  inventoryAlertSubs     InventoryAlertSubscription[]
+}
+
+model Branch {
+  id            String   @id @default(cuid())
+  tenantId      String
+  name          String
+  address       String?
+  phone         String?
+  receiptHeader String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users        User[]
+  products     Product[]
+  sales        Sale[]
+  cashSessions CashSession[]
+  registers    Register[]
+}
+
+model Register {
+  id        String   @id @default(cuid())
+  tenantId  String
+  branchId  String
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+}
+
+model Plan {
+  id              String   @id @default(cuid())
+  name            String   @unique // FREE, PRO, ENTERPRISE
+  displayName     String
+  priceMonthly    Int      @default(0)
+  priceYearly     Int      @default(0)
+  maxBranches     Int      @default(1)
+  maxUsers        Int      @default(1)
+  maxCashiers     Int      @default(0)
+  maxRegisters    Int      @default(1)
+  maxProducts     Int      @default(50)
+  monthlyReceipts Int      @default(300)
+  storageMB       Int      @default(100)
+  features        Json     @default("{}")
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id                 String             @id @default(cuid())
+  tenantId           String             @unique
+  planId             String
+  status             SubscriptionStatus @default(TRIAL)
+  trialEndsAt        DateTime?
+  currentPeriodStart DateTime           @default(now())
+  currentPeriodEnd   DateTime?
+  cancelAtPeriodEnd  Boolean            @default(false)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan     Plan      @relation(fields: [planId], references: [id])
+  invoices Invoice[]
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+  SUSPENDED
+}
+
+// ─────────────────────────────────────────
+//  BILLING
+// ─────────────────────────────────────────
+
+model Invoice {
+  id             String        @id @default(cuid())
+  tenantId       String
+  subscriptionId String?
+  amountUZS      Int
+  status         InvoiceStatus @default(OPEN)
+  paymentLink    String?
+  description    String?
+  createdAt      DateTime      @default(now())
+  paidAt         DateTime?
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+}
+
+enum InvoiceStatus {
+  OPEN
+  PAID
+  VOID
+}
+
+model UsageMonthly {
+  id             String @id @default(cuid())
+  tenantId       String
+  month          String // YYYY-MM
+  receiptsCount  Int    @default(0)
+  productsCount  Int    @default(0)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, month])
+}
+
+// ─────────────────────────────────────────
+//  USERS & AUTH
+// ─────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  fullName     String?
+  password     String
+  role         Role     @default(CASHIER)
+  tenantId     String?
+  branchId     String?
+  refreshToken String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant              Tenant?              @relation(fields: [tenantId], references: [id])
+  branch              Branch?              @relation(fields: [branchId], references: [id])
+  sales               Sale[]
+  auditLogs           AuditLog[]
+  cashSessions        CashSession[]
+  receivablePayments  ReceivablePayment[]
+}
+
+enum Role {
+  SUPERADMIN
+  OWNER
+  ADMIN
+  MANAGER
+  CASHIER
+}
+
+// ─────────────────────────────────────────
+//  PRODUCTS & STOCK
+// ─────────────────────────────────────────
+
+model Product {
+  id        String   @id @default(cuid())
+  tenantId  String
+  branchId  String?
+  name      String
+  sku       String?
+  price     Int
+  cost      Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  branch         Branch?         @relation(fields: [branchId], references: [id])
+  barcodes       Barcode[]
+  variants       ProductVariant[]
+  images         ProductImage[]
+  stock          Stock?
+  saleItems      SaleItem[]
+  stockMovements StockMovement[]
+  priceHistory   PriceHistory[]
+
+  @@unique([tenantId, sku])
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  productId String
+  url       String
+  alt       String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model Barcode {
+  id        String          @id @default(cuid())
+  code      String          @unique
+  productId String?
+  variantId String?         @unique
+  product   Product?        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+}
+
+model ProductVariant {
+  id        String   @id @default(cuid())
+  productId String
+  size      String?
+  color     String?
+  sku       String?
+  price     Int?
+  cost      Int?
+  quantity  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product        Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  barcode        Barcode?
+  saleItems      SaleItem[]
+  stockMovements StockMovement[]
+
+  @@unique([productId, size, color])
+  @@unique([productId, sku])
+}
+
+model Stock {
+  id        String  @id @default(cuid())
+  productId String  @unique
+  quantity  Int     @default(0)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  movements StockMovement[]
+}
+
+model StockMovement {
+  id        String   @id @default(cuid())
+  productId String
+  variantId String?
+  stockId   String?
+  qtyDelta  Int
+  reason    String
+  userId    String?
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+  variant ProductVariant? @relation(fields: [variantId], references: [id])
+  stock   Stock?  @relation(fields: [stockId], references: [id])
+}
+
+// ─────────────────────────────────────────
+//  SALES
+// ─────────────────────────────────────────
+
+model Sale {
+  id            String       @id @default(cuid())
+  tenantId      String
+  branchId      String?
+  receiptNo     String       @unique
+  status        SaleStatus   @default(PAID)
+  subtotal      Int
+  discount      Int          @default(0)
+  discountType  DiscountType @default(FIXED)
+  discountValue Int          @default(0)
+  total         Int
+  grossProfit   Int          @default(0)
+  userId        String
+  customerId    String?
+  cashSessionId String?
+  // Client-generated idempotency key for offline-queued sales \u2014 replaying the
+  // same offline sale after reconnecting must not create a duplicate.
+  clientTxnId   String?      @unique
+  createdAt     DateTime     @default(now())
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  branch      Branch?      @relation(fields: [branchId], references: [id])
+  user        User         @relation(fields: [userId], references: [id])
+  customer    Customer?    @relation(fields: [customerId], references: [id])
+  cashSession CashSession? @relation(fields: [cashSessionId], references: [id])
+  items       SaleItem[]
+  payments    Payment[]
+  receivables Receivable[]
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+enum SaleStatus {
+  PAID
+  VOID
+  PARTIAL
+}
+
+model SaleItem {
+  id        String @id @default(cuid())
+  saleId    String
+  productId String
+  variantId String?
+  qty       Int
+  price     Int
+  unitCost  Int    @default(0)
+
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+  variant ProductVariant? @relation(fields: [variantId], references: [id])
+}
+
+model Payment {
+  id        String      @id @default(cuid())
+  saleId    String
+  type      PaymentType
+  amount    Int
+  createdAt DateTime    @default(now())
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+}
+
+enum PaymentType {
+  CASH
+  CARD
+  MIXED
+}
+
+// ─────────────────────────────────────────
+//  CUSTOMERS & DEBT (Accounts Receivable)
+// ─────────────────────────────────────────
+
+model Customer {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  phone     String?
+  createdAt DateTime @default(now())
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sales         Sale[]
+  receivables   Receivable[]
+  cashbackCards CashbackCard[]
+}
+
+model Receivable {
+  id         String           @id @default(cuid())
+  tenantId   String
+  customerId String
+  saleId     String?
+  amountDue  Int
+  amountPaid Int              @default(0)
+  status     ReceivableStatus @default(OPEN)
+  dueDate    DateTime?
+  createdAt  DateTime         @default(now())
+
+  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer            @relation(fields: [customerId], references: [id])
+  sale     Sale?               @relation(fields: [saleId], references: [id])
+  payments ReceivablePayment[]
+}
+
+enum ReceivableStatus {
+  OPEN
+  CLOSED
+}
+
+model ReceivablePayment {
+  id           String      @id @default(cuid())
+  receivableId String
+  amount       Int
+  type         PaymentType @default(CASH)
+  userId       String?
+  createdAt    DateTime    @default(now())
+
+  receivable Receivable @relation(fields: [receivableId], references: [id], onDelete: Cascade)
+  user       User?      @relation(fields: [userId], references: [id])
+}
+
+// ─────────────────────────────────────────
+//  CASHBACK
+// ─────────────────────────────────────────
+
+model CashbackCard {
+  id          String   @id @default(cuid())
+  tenantId    String
+  customerId  String
+  cardNumber  String   @unique
+  balance     Int      @default(0)
+  totalEarned Int      @default(0)
+  totalSpent  Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer     Customer             @relation(fields: [customerId], references: [id])
+  transactions CashbackTransaction[]
+}
+
+model CashbackTransaction {
+  id        String              @id @default(cuid())
+  cardId    String
+  saleId    String?
+  amount    Int
+  type      CashbackTxType
+  note      String?
+  createdAt DateTime            @default(now())
+
+  card CashbackCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+}
+
+enum CashbackTxType {
+  EARN
+  REDEEM
+}
+
+// ─────────────────────────────────────────
+//  CASH SESSIONS
+// ─────────────────────────────────────────
+
+model CashSession {
+  id          String            @id @default(cuid())
+  tenantId    String
+  branchId    String?
+  userId      String
+  openedAt    DateTime          @default(now())
+  closedAt    DateTime?
+  openingCash Int               @default(0)
+  closingCash Int?
+  status      CashSessionStatus @default(OPEN)
+
+  tenant    Tenant        @relation(fields: [tenantId], references: [id])
+  branch    Branch?       @relation(fields: [branchId], references: [id])
+  user      User          @relation(fields: [userId], references: [id])
+  movements CashMovement[]
+  sales     Sale[]
+}
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
+model CashMovement {
+  id            String       @id @default(cuid())
+  cashSessionId String
+  type          CashMoveType
+  amount        Int
+  note          String?
+  createdAt     DateTime     @default(now())
+
+  cashSession CashSession @relation(fields: [cashSessionId], references: [id])
+}
+
+enum CashMoveType {
+  IN
+  OUT
+}
+
+// ─────────────────────────────────────────
+//  PRICE HISTORY
+// ─────────────────────────────────────────
+
+model PriceHistory {
+  id        String   @id @default(cuid())
+  productId String
+  oldPrice  Int
+  newPrice  Int
+  changedBy String?
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────
+//  AUDIT LOG
+// ─────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
+}
+
+// ─────────────────────────────────────────
+//  TELEGRAM BOT — GLOBAL CONFIG
+// ─────────────────────────────────────────
+
+model TelegramBotConfig {
+  id                 String    @id @default(cuid())
+  name               String    @default("default")
+  botTokenEncrypted  String
+  botUsername        String
+  webhookUrl         String?
+  webhookSecret      String?
+  miniAppUrl         String?
+  isActive           Boolean   @default(false)
+  status             String    @default("UNCONFIGURED")
+  lastWebhookSetAt   DateTime?
+  lastHealthCheckAt  DateTime?
+  createdByUserId    String?
+  updatedByUserId    String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+// ─────────────────────────────────────────
+//  TELEGRAM BOT — PER-TENANT SETTINGS
+// ─────────────────────────────────────────
+
+model TelegramTenantSettings {
+  id                          String   @id @default(cuid())
+  tenantId                    String   @unique
+  enabled                     Boolean  @default(false)
+  ownerNotificationsEnabled   Boolean  @default(true)
+  customerBotEnabled          Boolean  @default(false)
+  staffBotEnabled             Boolean  @default(false)
+  miniAppEnabled              Boolean  @default(false)
+  deepLinkBaseUrl             String?
+  defaultLanguage             String   @default("uz")
+  quietHoursEnabled           Boolean  @default(false)
+  quietHoursStart             String?  // "22:00"
+  quietHoursEnd               String?  // "08:00"
+  // Owner alert switches
+  alertDailySummary           Boolean  @default(true)
+  alertWeeklySummary          Boolean  @default(false)
+  alertMonthlySummary         Boolean  @default(false)
+  alertLowStock               Boolean  @default(true)
+  alertOutOfStock             Boolean  @default(true)
+  alertRefund                 Boolean  @default(true)
+  alertDebt                   Boolean  @default(true)
+  alertCashSession            Boolean  @default(true)
+  alertLargeDiscount          Boolean  @default(false)
+  alertInventoryMismatch      Boolean  @default(false)
+  // Customer bot switches
+  customerReceiptMessage      Boolean  @default(true)
+  customerCashbackNotif       Boolean  @default(true)
+  customerBonusExpiry         Boolean  @default(true)
+  customerStampProgress       Boolean  @default(true)
+  customerPromoEnabled        Boolean  @default(false)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────
+//  TELEGRAM IDENTITY / LINKING
+// ─────────────────────────────────────────
+
+model TelegramIdentity {
+  id                  String    @id @default(cuid())
+  telegramUserId      String    @unique
+  telegramChatId      String
+  telegramUsername    String?
+  firstName           String?
+  lastName            String?
+  languageCode        String?
+  isBot               Boolean   @default(false)
+  linkedAt            DateTime  @default(now())
+  lastSeenAt          DateTime?
+  isActive            Boolean   @default(true)
+  isBlocked           Boolean   @default(false)
+  blockedAt           DateTime?
+  lastDeliveryStatus  String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  links               TelegramLink[]
+  notifPreferences    TelegramNotificationPreference[]
+  notifLogs           TelegramNotificationLog[]
+  notifQueue          TelegramNotificationQueue[]
+  linkTokensUsed      TelegramLinkToken[]
+}
+
+model TelegramLink {
+  id                 String          @id @default(cuid())
+  tenantId           String
+  telegramIdentityId String
+  entityType         TgLinkEntityType
+  entityId           String
+  linkSource         TgLinkSource
+  verified           Boolean         @default(false)
+  linkedByUserId     String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  telegramIdentity TelegramIdentity @relation(fields: [telegramIdentityId], references: [id])
+
+  @@unique([tenantId, entityType, entityId])
+}
+
+model TelegramLinkToken {
+  id                       String    @id @default(cuid())
+  tenantId                 String
+  tokenHash                String    @unique
+  entityType               TgLinkEntityType
+  entityId                 String
+  intendedRole             Role?
+  expiresAt                DateTime
+  usedAt                   DateTime?
+  usedByTelegramIdentityId String?
+  createdByUserId          String?
+  createdAt                DateTime  @default(now())
+
+  tenant                 Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  usedByTelegramIdentity TelegramIdentity? @relation(fields: [usedByTelegramIdentityId], references: [id])
+}
+
+enum TgLinkEntityType {
+  USER
+  CUSTOMER
+  OWNER
+  STAFF
+}
+
+enum TgLinkSource {
+  TOKEN
+  QR
+  PHONE_OTP
+  RECEIPT
+  MANUAL_ADMIN
+}
+
+// ─────────────────────────────────────────
+//  TELEGRAM NOTIFICATION PREFERENCES
+// ─────────────────────────────────────────
+
+model TelegramNotificationPreference {
+  id                 String          @id @default(cuid())
+  tenantId           String
+  entityType         TgLinkEntityType
+  entityId           String
+  telegramIdentityId String?
+  notificationType   String
+  enabled            Boolean         @default(true)
+  deliveryMode       TgDeliveryMode  @default(INSTANT)
+  language           String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  telegramIdentity TelegramIdentity? @relation(fields: [telegramIdentityId], references: [id])
+
+  @@unique([tenantId, entityType, entityId, notificationType])
+}
+
+enum TgDeliveryMode {
+  INSTANT
+  DIGEST
+  OFF
+}
+
+// ─────────────────────────────────────────
+//  TELEGRAM MESSAGE TEMPLATES
+// ─────────────────────────────────────────
+
+model TelegramMessageTemplate {
+  id                 String         @id @default(cuid())
+  tenantId           String?
+  code               String
+  audience           TgAudience
+  language           String         @default("uz")
+  titleTemplate      String?
+  bodyTemplate       String
+  parseMode          TgParseMode    @default(HTML)
+  inlineKeyboardJson Json?
+  isDefault          Boolean        @default(false)
+  isActive           Boolean        @default(true)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@unique([code, language, tenantId])
+}
+
+enum TgAudience {
+  OWNER
+  CUSTOMER
+  STAFF
+  SUPERADMIN
+}
+
+enum TgParseMode {
+  NONE
+  HTML
+  MARKDOWNV2
+}
+
+// ─────────────────────────────────────────
+//  TELEGRAM NOTIFICATION LOG
+// ─────────────────────────────────────────
+
+model TelegramNotificationLog {
+  id                  String            @id @default(cuid())
+  tenantId            String?
+  telegramIdentityId  String?
+  notificationType    String
+  audience            TgAudience
+  sourceEntityType    String?
+  sourceEntityId      String?
+  templateCode        String?
+  payloadJson         Json?
+  messageTextSnapshot String?
+  telegramMessageId   String?
+  status              TgNotifStatus     @default(PENDING)
+  errorCode           String?
+  errorMessage        String?
+  retryCount          Int               @default(0)
+  sentAt              DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  telegramIdentity TelegramIdentity? @relation(fields: [telegramIdentityId], references: [id])
+}
+
+enum TgNotifStatus {
+  PENDING
+  SENT
+  FAILED
+  BLOCKED
+  SKIPPED
+}
+
+// ─────────────────────────────────────────
+//  TELEGRAM NOTIFICATION QUEUE
+// ─────────────────────────────────────────
+
+model TelegramNotificationQueue {
+  id                 String          @id @default(cuid())
+  tenantId           String?
+  notificationType   String
+  audience           TgAudience
+  telegramIdentityId String?
+  payloadJson        Json
+  scheduledFor       DateTime        @default(now())
+  dedupeKey          String?
+  priority           TgQueuePriority @default(NORMAL)
+  status             TgQueueStatus   @default(PENDING)
+  retryCount         Int             @default(0)
+  lastError          String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  telegramIdentity TelegramIdentity? @relation(fields: [telegramIdentityId], references: [id])
+
+  @@index([status, scheduledFor])
+  @@index([dedupeKey])
+}
+
+enum TgQueuePriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum TgQueueStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+// ─────────────────────────────────────────
+//  INVENTORY ALERT RULES
+// ─────────────────────────────────────────
+
+model InventoryAlertRule {
+  id                 String           @id @default(cuid())
+  tenantId           String
+  branchId           String?
+  productId          String?
+  alertType          InventoryAlertType
+  minQuantity        Int?
+  daysWithoutSale    Int?
+  velocityWindowDays Int?
+  enabled            Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model InventoryAlertSubscription {
+  id                 String           @id @default(cuid())
+  tenantId           String
+  userId             String
+  telegramIdentityId String?
+  alertType          InventoryAlertType
+  branchId           String?
+  enabled            Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+enum InventoryAlertType {
+  LOW_STOCK
+  OUT_OF_STOCK
+  FAST_MOVING
+  DEAD_STOCK
+  OVERSTOCK
+  EXPIRY_SOON
+  INVENTORY_MISMATCH
+}

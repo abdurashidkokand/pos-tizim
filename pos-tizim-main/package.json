@@ -1,0 +1,23 @@
+{
+  "name": "pos-tizim",
+  "version": "1.4.0",
+  "private": true,
+  "packageManager": "bun@1.3.10",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "db:generate": "cd apps/api && bunx prisma generate",
+    "db:push": "cd apps/api && bunx prisma db push",
+    "db:migrate": "cd apps/api && bunx prisma migrate dev",
+    "db:seed": "cd apps/api && bun run prisma/seed.ts",
+    "db:studio": "cd apps/api && bunx prisma studio",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0",
+    "typescript": "^5.4.0"
+  }
+}

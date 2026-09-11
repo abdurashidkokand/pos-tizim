@@ -1,0 +1,177 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Global layout variables (single source of truth) ─── */
+:root {
+  /* Mobile header height (py-2.5 + text ~40px) */
+  --app-header-h: 44px;
+  /* Bottom nav height (py-2 + icon + label ~52px) */
+  --app-bottom-nav-h: 56px;
+  /* Safe area insets (overridden by env() on supported devices) */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* Total offset for main content on mobile */
+  --app-top-offset: calc(var(--safe-top) + var(--app-header-h));
+  --app-bottom-offset: calc(var(--safe-bottom) + var(--app-bottom-nav-h));
+
+  /* Telegram WebApp viewport tracking */
+  --tg-viewport-height: 100vh;
+  --tg-viewport-stable-height: 100vh;
+  --vv-height: 100vh;
+  --vv-offset: 0px;
+}
+
+/* Desktop: no mobile header/bottom nav offsets */
+@media (min-width: 768px) {
+  :root {
+    --app-header-h: 0px;
+    --app-bottom-nav-h: 0px;
+    --app-top-offset: 0px;
+    --app-bottom-offset: 0px;
+  }
+}
+
+.tg-body {
+  min-height: var(--tg-viewport-stable-height, 100vh);
+}
+
+/* Telegram WebApp: use TG-specific header instead of our own */
+body.is-tg {
+  /* TG chrome offset (~56px for TG toolbar) + safe area */
+  --tg-chrome-h: calc(var(--safe-top) + 56px);
+  /* Our TG header is smaller (py-1.5 + text ~32px) */
+  --app-header-h: 32px;
+  --app-top-offset: calc(var(--tg-chrome-h) + var(--app-header-h));
+}
+body.is-tg .mobile-header-hide-tg {
+  display: none !important;
+}
+body.is-tg .mobile-header-tg-only {
+  display: flex !important;
+}
+/* Fill the gap between viewport top and TG header with matching dark bg */
+body.is-tg .mobile-header-tg-only::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: var(--tg-chrome-h, 56px);
+  background: rgb(17 24 39 / 0.9);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+html, body {
+  height: 100%;
+  overflow-x: hidden;
+}
+
+@keyframes blob {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -50px) scale(1.1); }
+  66% { transform: translate(-20px, 20px) scale(0.9); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.2; }
+  50% { transform: translateY(-80px) scale(1.5); opacity: 0.5; }
+}
+
+@keyframes gradient {
+  0%, 100% { background-size: 200% 200%; background-position: left center; }
+  50% { background-size: 200% 200%; background-position: right center; }
+}
+
+.animate-blob {
+  animation: blob 8s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 8s ease-in-out infinite;
+}
+
+.animate-gradient {
+  animation: gradient 4s ease infinite;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-3000 {
+  animation-delay: 3s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+@layer utilities {
+  /* iOS safe-area support (notch / Home Bar) */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  /* Prevent iOS tap highlight */
+  .tap-highlight-none {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Prevent body from zooming on input focus on iOS */
+input[type="text"],
+input[type="number"],
+input[type="password"],
+input[type="search"],
+select,
+textarea {
+  font-size: 16px;
+}
+
+/* ─── Dashboard background ─── */
+.dashboard-bg {
+  background:
+    linear-gradient(135deg,
+      #f8fafc 0%,
+      #eef2ff 25%,
+      #f0f9ff 50%,
+      #faf5ff 75%,
+      #f8fafc 100%
+    );
+  background-attachment: fixed;
+}
+
+/* Subtle grid overlay for dashboard content area */
+.dashboard-bg::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Animated decorative blobs for dashboard */
+@keyframes dash-blob-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.35; }
+  50% { transform: translate(40px, -30px) scale(1.15); opacity: 0.45; }
+}
+@keyframes dash-blob-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.25; }
+  50% { transform: translate(-30px, 25px) scale(1.1); opacity: 0.35; }
+}
+@keyframes dash-blob-3 {
+  0%, 100% { transform: translate(0, 0) scale(0.95); opacity: 0.2; }
+  50% { transform: translate(20px, 15px) scale(1.05); opacity: 0.3; }
+}
+
+.dash-blob-1 { animation: dash-blob-1 12s ease-in-out infinite; }
+.dash-blob-2 { animation: dash-blob-2 15s ease-in-out infinite 3s; }
+.dash-blob-3 { animation: dash-blob-3 18s ease-in-out infinite 6s; }

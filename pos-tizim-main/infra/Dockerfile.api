@@ -1,0 +1,33 @@
+FROM oven/bun:1 AS base
+WORKDIR /app
+
+# Install dependencies
+COPY package.json bun.lock turbo.json ./
+COPY packages/shared/package.json packages/shared/
+COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
+RUN bun install --frozen-lockfile
+
+# Copy source
+COPY packages/shared/ packages/shared/
+COPY apps/api/ apps/api/
+
+# Generate Prisma client
+WORKDIR /app/apps/api
+RUN bunx prisma generate
+
+# Production stage
+FROM oven/bun:1-slim
+WORKDIR /app
+
+COPY --from=base /app/ /app/
+
+WORKDIR /app/apps/api
+
+# Create uploads directory
+RUN mkdir -p uploads
+
+EXPOSE 3001
+
+# Run migrations then start
+CMD ["sh", "-c", "bunx prisma migrate deploy && bun run src/main.ts"]

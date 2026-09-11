@@ -1,0 +1,23 @@
+                                   Table "public.Plan"
+    Column    |              Type              | Collation | Nullable |      Default      
+--------------+--------------------------------+-----------+----------+-------------------
+ id           | text                           |           | not null | 
+ name         | text                           |           | not null | 
+ displayName  | text                           |           | not null | 
+ priceMonthly | integer                        |           | not null | 0
+ priceYearly  | integer                        |           | not null | 0
+ maxBranches  | integer                        |           | not null | 1
+ maxUsers     | integer                        |           | not null | 2
+ maxProducts  | integer                        |           | not null | 100
+ maxReceipts  | integer                        |           | not null | 500
+ storageMB    | integer                        |           | not null | 100
+ features     | jsonb                          |           |          | 
+ isActive     | boolean                        |           | not null | true
+ sortOrder    | integer                        |           | not null | 0
+ createdAt    | timestamp(3) without time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "Plan_pkey" PRIMARY KEY, btree (id)
+    "Plan_name_key" UNIQUE, btree (name)
+Referenced by:
+    TABLE ""Subscription"" CONSTRAINT "Subscription_planId_fkey" FOREIGN KEY ("planId") REFERENCES "Plan"(id) ON UPDATE CASCADE ON DELETE RESTRICT
+
